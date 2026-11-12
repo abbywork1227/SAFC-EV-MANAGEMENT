@@ -1,5 +1,34 @@
-# Vue 3 + Vite
+# 充電管理中控台 Vue 示意專案 V4
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + Vite 多檔案原型，可在 StackBlitz 的 Vue/Vite 專案中編輯。
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+## 本版更新
+1. 移除 SEFUS 字樣；暫以「Merck Group in Taiwan」作為示意識別，正式公司法人英文名稱仍須由客戶確認。系統主標題為「充電管理系統」。
+2. RFID 卡片可事先取得 UID 後手動輸入或 CSV 匯入員工資料，不要求管理者逐張在中控台現場刷卡。若沒有 UID，需使用相容讀卡機讀取實體卡片，或向卡片供應商取得資料。
+3. 系統設定頁只保留系統運作參數；LOG 匯出在 LOG 頁，員工匯入／匯出／範本在員工管理頁。
+4. 全站文字與表格字級已放大。
+5. 保留登入入口、管理者設備 QR Code 檢視、LOG 篩選、員工管理等功能。
+
+## StackBlitz
+1. 解壓縮 ZIP。
+2. StackBlitz 建立 Vue + Vite 專案。
+3. 將本專案 `package.json`、`index.html` 與 `src/` 覆蓋到 StackBlitz 專案。
+4. 等待套件安裝並預覽。
+
+## 展示 UID
+- `A0012345`：管理者
+- `A0012346`、`A0012347`：一般員工
+
+## CSV 匯入欄位
+`員工編號,員工姓名,部門,卡片 UID,角色,狀態`
+
+## 專案限制
+此為前端原型，資料重新整理後回復範例值。尚未連接正式本機資料庫、實體 RFID、Breaker 電流感測器、nDAS、RS485/TCP-IP 或原廠 QR Code。QR 圖樣僅供畫面示意，不能啟動實際充電。
+
+
+## V5 本次更新
+- 設備與 QR 對應改為獨立管理畫面：逐一查看 10 個充電位置，支援上傳／更換原廠 QR Code 圖片及預覽。
+- 員工列表以左右滑動開關切換「管理者權限」及「啟用狀態」，不再使用角色／狀態點選文字或額外操作欄。
+- 至少保留一位啟用中的管理者，避免無人能進入管理後台。
+- 全站字體與表格、按鈕、欄位等控制項再次放大。
+- QR 圖片目前只存在前端示意資料中；正式版需串接後端檔案儲存空間與資料庫。
