@@ -20,7 +20,7 @@ function clearFilters() { dateFrom.value=''; dateTo.value=''; keyword.value=''; 
 </script>
 <template>
   <section>
-    <div class="section-heading"><div><h2>充電使用紀錄</h2><p>依 QR Code 發放及電流偵測事件彙整；可查詢與匯出</p></div><button class="btn btn-primary" @click="emit('export', filtered)">↓ 匯出目前查詢結果</button></div>
+    <div class="export-toolbar"><button class="btn btn-primary" @click="emit('export', filtered)">↓ 匯出目前查詢結果</button></div>
     <div class="filter-panel">
       <div class="filter-field"><label>開始日期</label><input type="date" v-model="dateFrom" /></div>
       <div class="filter-field"><label>結束日期</label><input type="date" v-model="dateTo" /></div>

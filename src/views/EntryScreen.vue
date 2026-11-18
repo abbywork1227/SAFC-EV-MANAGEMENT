@@ -1,11 +1,21 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 const props = defineProps({ employees: { type: Array, required: true } })
 const emit = defineEmits(['choose', 'authenticate', 'back'])
 const selected = ref('')
 const uid = ref('A0012345')
 const error = ref('')
 const showCard = ref(false)
+const started = ref(false)
+const slides = [
+  { title: '歡迎使用電動車充電服務', text: '請先閱讀充電設備使用須知，並依現場規範操作。', tag: '使用公告', tone: 'purple' },
+  { title: '充電安全提醒', text: '請確認充電設備與車輛連接正常，使用時留意周遭安全。', tag: '安全提醒', tone: 'yellow' },
+  { title: '設備維護公告', text: '如遇設備異常，請勿使用並聯繫管理人員。', tag: '設備公告', tone: 'teal' }
+]
+const slideIndex = ref(0)
+let slideTimer
+onMounted(() => { slideTimer = setInterval(() => slideIndex.value = (slideIndex.value + 1) % slides.length, 3000) })
+onUnmounted(() => clearInterval(slideTimer))
 watch(selected, () => { error.value = '' })
 function choose(value) {
   selected.value = value
@@ -26,8 +36,13 @@ function emitResult() {
 function back() { selected.value = ''; showCard.value = false; error.value = ''; emit('back') }
 </script>
 <template>
-  <div class="entry-screen">
-    <section class="entry-card">
+  <div class="entry-screen idle-screen" @click.self="started = true">
+    <section v-if="!started" class="idle-carousel" @click="started = true">
+      <div class="idle-slide" :class="slides[slideIndex].tone"><small>{{ slides[slideIndex].tag }} · {{ slideIndex + 1 }} / 3</small><h1>{{ slides[slideIndex].title }}</h1><p>{{ slides[slideIndex].text }}</p><div class="idle-dots"><i v-for="(slide,i) in slides" :key="i" :class="{active:slideIndex===i}"></i></div></div>
+      <button class="idle-enter" @click.stop="started = true">點擊畫面開始使用　→</button>
+      <small class="idle-timer">公告每 3 秒自動輪播</small>
+    </section>
+    <section v-else class="entry-card">
       <div class="entry-brand">MERCK GROUP IN TAIWAN · EV CHARGING</div>
       <div class="entry-logo">⚡</div>
       <h1>Merck Group in Taiwan｜充電管理系統</h1>

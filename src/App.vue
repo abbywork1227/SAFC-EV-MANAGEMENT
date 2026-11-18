@@ -8,6 +8,7 @@ import EmployeesView from './views/EmployeesView.vue'
 import SettingsView from './views/SettingsView.vue'
 import QRMappingView from './views/QRMappingView.vue'
 import QrModal from './components/QrModal.vue'
+import ExtrasView from './views/ExtrasView.vue'
 
 const employees = ref(initialEmployees.map(x => ({ ...x })))
 const stations = ref(initialStations.map(x => ({ ...x })))
@@ -18,10 +19,13 @@ const activePage = ref('dashboard')
 const settingsSubpage = ref('')
 const qrStation = ref(null)
 const qrPurpose = ref('employee')
+const suspendEmployeeId = ref('')
 
 const navItems = [
-  { id: 'dashboard', label: '設備總覽', icon: '▦' },
+  { id: 'dashboard', label: '設備總覽／狀態管理', icon: '▦' },
+  { id: 'reports', label: '統計報表', icon: '▥' },
   { id: 'logs', label: '使用紀錄 LOG', icon: '≡' },
+  { id: 'points', label: '員工積點（暫定功能）', icon: '★' },
   { id: 'employees', label: '員工／卡片管理', icon: '♙' },
   { id: 'settings', label: '系統設定', icon: '⚙' }
 ]
@@ -80,6 +84,13 @@ function addEmployee(employee) {
 function toggleEmployee(id) {
   const employee = employees.value.find(e => e.id === id)
   if (employee) employee.active = !employee.active
+}
+function goCardManagement(employeeId) {
+  suspendEmployeeId.value = employeeId
+  activePage.value = 'employees'
+}
+function clearSuspendTarget() {
+  suspendEmployeeId.value = ''
 }
 function updateEmployeeCard(id, uid) {
   const employee = employees.value.find(e => e.id === id)
@@ -174,14 +185,15 @@ function downloadCsv(filename, rows) {
       </div>
     </aside>
     <main class="main-area">
-      <header class="topbar">
+        <header class="topbar">
         <div><div class="eyebrow">EV CHARGING CONTROL</div><h1>{{ pageTitle }}</h1><p>Merck Group in Taiwan｜充電樁使用管理示意</p></div>
       </header>
-      <DashboardView v-if="activePage === 'dashboard'" :stations="stations" @show-qr="openQr($event, 'admin')" />
+      <div v-if="activePage==='settings' && settingsSubpage==='announcements'" class="subpage-back"><button class="btn btn-outline" @click="settingsSubpage=''">← 返回系統設定</button></div>
+      <ExtrasView v-if="['dashboard','reports','points'].includes(activePage) || (activePage==='settings' && settingsSubpage==='announcements')" :page="activePage === 'dashboard' ? 'equipment' : activePage === 'points' ? 'points' : (settingsSubpage==='announcements' ? 'announcements' : 'reports')" :stations="stations" :logs="logs" :operator="currentUser?.name || '管理者'" @go-card-management="goCardManagement" />
       <LogsView v-else-if="activePage === 'logs'" :logs="logs" @export="exportLogs" />
-      <EmployeesView v-else-if="activePage === 'employees'" :employees="employees" @add="addEmployee" @toggle-role="toggleEmployeeRole" @toggle-active="toggleEmployeeActive" @bind-card="updateEmployeeCard" @export="exportEmployees" @import="importEmployeeFile" @template="downloadTemplate" />
-      <QRMappingView v-else-if="activePage === 'settings' && settingsSubpage === 'qr'" :stations="stations" @update-qr="updateStationQr" @back="settingsSubpage = ''" />
-      <SettingsView v-else-if="activePage === 'settings'" @open-qr="settingsSubpage = 'qr'" />
+      <EmployeesView v-else-if="activePage === 'employees'" :employees="employees" :suspend-employee-id="suspendEmployeeId" @add="addEmployee" @toggle-role="toggleEmployeeRole" @toggle-active="toggleEmployeeActive" @bind-card="updateEmployeeCard" @export="exportEmployees" @import="importEmployeeFile" @template="downloadTemplate" @clear-suspend-target="clearSuspendTarget" />
+      <div v-else-if="activePage === 'settings' && settingsSubpage === 'qr'"><div class="subpage-back"><button class="btn btn-outline" @click="settingsSubpage = ''">← 返回系統設定</button></div><QRMappingView :stations="stations" @update-qr="updateStationQr" @back="settingsSubpage = ''" /></div>
+      <SettingsView v-else-if="activePage === 'settings' && !settingsSubpage" @open-qr="settingsSubpage = 'qr'" @open-announcements="settingsSubpage = 'announcements'" />
     </main>
   </div>
   <QrModal v-if="qrStation" :station="qrStation" :purpose="qrPurpose" @close="closeQr" />
