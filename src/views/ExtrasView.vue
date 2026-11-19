@@ -35,6 +35,15 @@ const statusDateTo = ref('')
 const appliedStatusKeyword = ref('')
 const appliedStatusFrom = ref('')
 const appliedStatusTo = ref('')
+const pageSize = 10
+const stationPage = ref(1)
+const statusHistoryPage = ref(1)
+const pagedStations = computed(() => filteredStations.value.slice((stationPage.value-1)*pageSize, stationPage.value*pageSize))
+const pagedStatusHistory = computed(() => filteredStatusHistory.value.slice((statusHistoryPage.value-1)*pageSize, statusHistoryPage.value*pageSize))
+const stationPageCount = computed(() => Math.max(1, Math.ceil(filteredStations.value.length/pageSize)))
+const statusHistoryPageCount = computed(() => Math.max(1, Math.ceil(filteredStatusHistory.value.length/pageSize)))
+function changeStationPage(page){ stationPage.value=Math.min(stationPageCount.value,Math.max(1,page)) }
+function changeStatusHistoryPage(page){ statusHistoryPage.value=Math.min(statusHistoryPageCount.value,Math.max(1,page)) }
 const filteredStations = computed(() => props.stations.filter(s => !appliedStatusKeyword.value || `${s.id} ${s.name} ${s.status}`.toLowerCase().includes(appliedStatusKeyword.value.trim().toLowerCase())))
 const filteredStatusHistory = computed(() => statusHistory.value.filter(x => {
  const day=String(x.time||'').slice(0,10).replaceAll('/','-')
@@ -42,8 +51,8 @@ const filteredStatusHistory = computed(() => statusHistory.value.filter(x => {
  const q=appliedStatusKeyword.value.trim().toLowerCase()
  return dateOk && (!q || `${x.station} ${x.from} ${x.to} ${x.reason} ${x.operator}`.toLowerCase().includes(q))
 }))
-function applyStatusFilters(){appliedStatusKeyword.value=equipmentKeyword.value;appliedStatusFrom.value=statusDateFrom.value;appliedStatusTo.value=statusDateTo.value}
-function clearStatusFilters(){equipmentKeyword.value='';statusDateFrom.value='';statusDateTo.value='';appliedStatusKeyword.value='';appliedStatusFrom.value='';appliedStatusTo.value=''}
+function applyStatusFilters(){appliedStatusKeyword.value=equipmentKeyword.value;appliedStatusFrom.value=statusDateFrom.value;appliedStatusTo.value=statusDateTo.value;stationPage.value=1;statusHistoryPage.value=1}
+function clearStatusFilters(){equipmentKeyword.value='';statusDateFrom.value='';statusDateTo.value='';appliedStatusKeyword.value='';appliedStatusFrom.value='';appliedStatusTo.value='';stationPage.value=1;statusHistoryPage.value=1}
 const pointRows = ref([
  {id:'E002',name:'陳小華',points:1,reason:'疑似逾時占用（暫定）'},
  {id:'E003',name:'林大偉',points:3,reason:'逾時占用（暫定）'},
@@ -63,6 +72,14 @@ const pointDateFrom = ref('')
 const pointDateTo = ref('')
 const appliedPointFrom = ref('')
 const appliedPointTo = ref('')
+const pointRowsPage = ref(1)
+const pointHistoryPage = ref(1)
+const pagedPointRows = computed(() => filteredPointRows.value.slice((pointRowsPage.value-1)*pageSize,pointRowsPage.value*pageSize))
+const pagedPointHistory = computed(() => filteredPointHistory.value.slice((pointHistoryPage.value-1)*pageSize,pointHistoryPage.value*pageSize))
+const pointRowsPageCount = computed(() => Math.max(1,Math.ceil(filteredPointRows.value.length/pageSize)))
+const pointHistoryPageCount = computed(() => Math.max(1,Math.ceil(filteredPointHistory.value.length/pageSize)))
+function changePointRowsPage(page){pointRowsPage.value=Math.min(pointRowsPageCount.value,Math.max(1,page))}
+function changePointHistoryPage(page){pointHistoryPage.value=Math.min(pointHistoryPageCount.value,Math.max(1,page))}
 const filteredPointHistory = computed(() => pointHistory.value.filter(x => {
  const day=String(x.time||'').slice(0,10).replaceAll('/','-')
  const dateOk=(!appliedPointFrom.value || day>=appliedPointFrom.value) && (!appliedPointTo.value || day<=appliedPointTo.value)
@@ -75,8 +92,8 @@ const filteredPointRows = computed(() => {
  const matchedIds=new Set(filteredPointHistory.value.map(x=>x.id))
  return pointRows.value.filter(x=>matchedIds.has(x.id))
 })
-function applyPointFilters(){appliedPointFrom.value=pointDateFrom.value;appliedPointTo.value=pointDateTo.value;appliedPointKeyword.value=pointKeyword.value}
-function clearPointFilters(){pointKeyword.value='';appliedPointKeyword.value='';pointDateFrom.value='';pointDateTo.value='';appliedPointFrom.value='';appliedPointTo.value=''}
+function applyPointFilters(){appliedPointFrom.value=pointDateFrom.value;appliedPointTo.value=pointDateTo.value;appliedPointKeyword.value=pointKeyword.value;pointRowsPage.value=1;pointHistoryPage.value=1}
+function clearPointFilters(){pointKeyword.value='';appliedPointKeyword.value='';pointDateFrom.value='';pointDateTo.value='';appliedPointFrom.value='';appliedPointTo.value='';pointRowsPage.value=1;pointHistoryPage.value=1}
 function exportPointHistory(){
  const rows=[['扣點時間','員工編號','員工姓名','扣點數','扣點原因','操作人員'],...filteredPointHistory.value.map(x=>[x.time,x.id,x.name,x.amount,x.reason,x.operator])]
  const html='\ufeff<html><head><meta charset="UTF-8"></head><body><table>'+rows.map((r,i)=>'<tr>'+r.map(v=>`<${i===0?'th':'td'}>${String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')}</${i===0?'th':'td'}>`).join('')+'</tr>').join('')+'</table></body></html>'
@@ -125,6 +142,7 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
  </template>
  <template v-else-if="page==='equipment'">
    <div class="export-toolbar"><button class="btn btn-outline" @click="exportStatusHistory">↓ 匯出設備異動紀錄 Excel</button></div>
+   <div class="section-heading"><div><h2>設備狀態</h2><p>查看設備目前狀態；管理者可調整設備狀態並留下異動紀錄。</p></div></div>
   <div class="stats-cards status-six">
    <article><small>可使用</small><strong>{{stations.filter(s=>s.status==='available').length}}</strong><span>個設備</span></article>
    <article><small>使用中</small><strong>{{stations.filter(s=>s.status==='charging').length}}</strong><span>個設備</span></article>
@@ -139,15 +157,24 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
     <button class="btn btn-outline" @click="applyStatusFilters">查詢</button>
     <button class="btn btn-light" @click="clearStatusFilters">清除條件</button>
    </div>
-   <div class="station-grid"> <article v-for="s in filteredStations" :key="s.id" class="station-card"><div class="station-top"><strong>{{s.id}}</strong><span class="status" :class="s.status==='maintenance'?'neutral':s.status">{{s.status==='available'?'可使用':s.status==='charging'?'使用中':s.status==='maintenance'?'維修中':s.status==='fault'?'故障中':'離線'}}</span></div><div class="muted">{{s.name}}</div><div class="filter-field"><label>管理者狀態設定</label><select v-model="s.status"><option value="available">可使用</option><option value="maintenance">維修中</option><option value="fault">故障中</option></select></div><div v-if="s.status==='charging'" class="current-user">目前使用者：<strong>{{activeUsers[s.id] || '員工示意資料'}}</strong></div><div v-if="s.status!==originalStatuses[s.id]" class="filter-field"><label>狀態變更原因（必填）</label><input v-model="changeReasons[s.id]" placeholder="例如：設備異常，暫停開放檢修" /></div></article></div>
+   <div class="management-combined-section">
+   <div class="section-heading"><div><h3>設備清單</h3><p>顯示 {{filteredStations.length}} 台設備</p></div></div>
+   <div class="station-grid"> <article v-for="s in pagedStations" :key="s.id" class="station-card"><div class="station-top"><strong>{{s.id}}</strong><span class="status" :class="s.status==='maintenance'?'neutral':s.status">{{s.status==='available'?'可使用':s.status==='charging'?'使用中':s.status==='maintenance'?'維修中':s.status==='fault'?'故障中':'離線'}}</span></div><div class="muted">{{s.name}}</div><div class="filter-field"><label>管理者狀態設定</label><select v-model="s.status"><option value="available">可使用</option><option value="maintenance">維修中</option><option value="fault">故障中</option></select></div><div v-if="s.status==='charging'" class="current-user">目前使用者：<strong>{{activeUsers[s.id] || '員工示意資料'}}</strong></div><div v-if="s.status!==originalStatuses[s.id]" class="filter-field"><label>狀態變更原因（必填）</label><input v-model="changeReasons[s.id]" placeholder="例如：設備異常，暫停開放檢修" /></div></article></div>
+   <div class="pagination-row"><span>共 {{filteredStations.length}} 台設備｜每頁 10 筆</span><div class="pagination-controls"><button class="btn btn-small btn-outline" :disabled="stationPage<=1" @click="changeStationPage(stationPage-1)">上一頁</button><span>第 {{stationPage}} / {{stationPageCount}} 頁</span><button class="btn btn-small btn-outline" :disabled="stationPage>=stationPageCount" @click="changeStationPage(stationPage+1)">下一頁</button></div></div>
   <div class="save-row"><span>調整設備狀態後，請按儲存套用變更。</span><button class="btn btn-primary" @click="saveStatuses">儲存設備狀態</button></div>
-  <div class="section-heading" style="margin-top:26px"><div><h2>設備狀態異動紀錄</h2><p>管理者儲存狀態變更時自動留存原狀態、新狀態、變更原因、操作人員及時間。</p></div></div>
-   <div class="table-wrap"><table><thead><tr><th>異動時間</th><th>設備</th><th>原狀態</th><th>新狀態</th><th>變更原因</th><th>操作人員</th></tr></thead><tbody><tr v-for="i in filteredStatusHistory" :key="i.id"><td>{{i.time}}</td><td>{{i.station}}</td><td>{{i.from}}</td><td>{{i.to}}</td><td>{{i.reason}}</td><td>{{i.operator}}</td></tr><tr v-if="!filteredStatusHistory.length"><td colspan="6" class="empty-cell">沒有符合條件的設備異動紀錄</td></tr></tbody></table></div>
+  <div class="section-heading" style="margin-top:26px"><div><h3>設備狀態異動紀錄</h3><p>查詢結果：{{filteredStatusHistory.length}} 筆</p></div></div>
+   <div class="table-wrap"><table><thead><tr><th>異動時間</th><th>設備</th><th>原狀態</th><th>新狀態</th><th>變更原因</th><th>操作人員</th></tr></thead><tbody><tr v-for="i in pagedStatusHistory" :key="i.id"><td>{{i.time}}</td><td>{{i.station}}</td><td>{{i.from}}</td><td>{{i.to}}</td><td>{{i.reason}}</td><td>{{i.operator}}</td></tr><tr v-if="!filteredStatusHistory.length"><td colspan="6" class="empty-cell">沒有符合條件的設備異動紀錄</td></tr></tbody></table></div>
+   <div class="pagination-row"><span>共 {{filteredStatusHistory.length}} 筆紀錄｜每頁 10 筆</span><div class="pagination-controls"><button class="btn btn-small btn-outline" :disabled="statusHistoryPage<=1" @click="changeStatusHistoryPage(statusHistoryPage-1)">上一頁</button><span>第 {{statusHistoryPage}} / {{statusHistoryPageCount}} 頁</span><button class="btn btn-small btn-outline" :disabled="statusHistoryPage>=statusHistoryPageCount" @click="changeStatusHistoryPage(statusHistoryPage+1)">下一頁</button></div></div>
+   </div>
   <div class="note-box">設備總覽與狀態管理已整合於同一頁。電流訊號可判斷充電開始及停止，但充電停止不代表車輛已離開；維修中及故障中均由管理者手動設定，儲存時填寫原因並留下異動紀錄。</div>
  </template>
  <template v-else-if="page==='points'">
   <div class="export-toolbar"><button class="btn btn-primary" @click="exportPointHistory">↓ 匯出扣點紀錄 Excel</button></div>
-  <div class="section-heading"><div><h2>員工違規扣點（暫定功能）</h2><p>查看員工目前累計扣點及每筆扣點紀錄。</p></div></div>
+  <div class="section-heading"><div>
+    <!-- <h2>員工違規扣點（暫定功能）</h2>
+    
+    <p>查看員工目前累計扣點及每筆扣點紀錄。</p> -->
+  </div></div>
    <div class="filter-panel history-filter">
     <div class="filter-field search-field"><label>搜尋員工／扣點原因</label><input v-model="pointKeyword" placeholder="員工編號、姓名或扣點原因" /></div>
    <div class="filter-field"><label>扣點開始日期</label><input type="date" v-model="pointDateFrom" /></div>
@@ -158,13 +185,13 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
   <div class="point-combined-section">
    <h3>員工累計扣點</h3>
    <div class="table-wrap"><table><thead><tr><th>員工編號</th><th>員工姓名</th><th>累計扣點</th><th>卡片處置</th><th>最近扣點原因</th><th>管理操作</th></tr></thead><tbody>
-    <tr v-for="row in filteredPointRows" :key="row.id"><td>{{row.id}}</td><td>{{row.name}}</td><td>{{row.points}} / 3 點</td><td>{{row.points>=3?'達門檻，待停用':'正常使用'}}</td><td>{{row.reason}}</td><td><button class="btn btn-small btn-outline" @click="openPointModal(row)">＋ 手動扣點</button><button v-if="row.points>=3" class="btn btn-small btn-primary" @click="emit('go-card-management',row.id)">前往卡片管理停用</button></td></tr>
+    <tr v-for="row in pagedPointRows" :key="row.id"><td>{{row.id}}</td><td>{{row.name}}</td><td>{{row.points}} / 3 點</td><td>{{row.points>=3?'達門檻，待停用':'正常使用'}}</td><td>{{row.reason}}</td><td><button class="btn btn-small btn-outline" @click="openPointModal(row)">＋ 手動扣點</button><button v-if="row.points>=3" class="btn btn-small btn-primary" @click="emit('go-card-management',row.id)">前往卡片管理停用</button></td></tr>
     <tr v-if="!filteredPointRows.length"><td colspan="6" class="empty-cell">沒有符合條件的員工</td></tr>
    </tbody></table></div>
    <h3 class="point-history-heading">違規扣點紀錄</h3>
    <div class="table-summary">查詢結果：{{filteredPointHistory.length}} 筆</div>
    <div class="table-wrap"><table><thead><tr><th>異動時間</th><th>員工</th><th>異動點數</th><th>異動方式</th><th>原因</th><th>操作人員</th></tr></thead><tbody>
-    <tr v-for="(item,index) in filteredPointHistory" :key="index"><td>{{item.time}}</td><td>{{item.name}}（{{item.id}}）</td><td>-{{item.amount}}</td><td>{{item.operator==='系統'?'自動扣點（暫定）':'管理者手動扣點'}}</td><td>{{item.reason}}</td><td>{{item.operator}}</td></tr>
+    <tr v-for="(item,index) in pagedPointHistory" :key="index"><td>{{item.time}}</td><td>{{item.name}}（{{item.id}}）</td><td>-{{item.amount}}</td><td>{{item.operator==='系統'?'自動扣點（暫定）':'管理者手動扣點'}}</td><td>{{item.reason}}</td><td>{{item.operator}}</td></tr>
     <tr v-if="!filteredPointHistory.length"><td colspan="6" class="empty-cell">沒有符合條件的扣點紀錄</td></tr>
    </tbody></table></div>
   </div>

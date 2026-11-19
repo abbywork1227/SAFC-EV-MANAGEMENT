@@ -121,3 +121,32 @@ body{font-size:16px}.entry-brand,.eyebrow{font-size:13px}.entry-card h1{font-siz
 .point-combined-section h3{margin:0 0 12px;font-size:17px;color:#18324f}
 .point-combined-section .point-history-heading{margin-top:26px;padding-top:20px;border-top:1px solid #e8edf3}
 .point-combined-section .table-summary{margin:0 0 8px}
+
+/* V8.5.1: one enclosing panel for primary list and its history, matching employee points UI */
+.management-combined-section{background:#fff;border:1px solid #e1e8f0;border-radius:14px;padding:18px;margin-bottom:18px}
+.management-combined-section .section-heading:first-child{margin-top:0}
+.management-combined-section .section-heading h3{margin:0 0 12px;font-size:17px;color:#18324f}
+.management-combined-section .section-heading[style*="margin-top"]{padding-top:20px;border-top:1px solid #e8edf3}
+.management-combined-section .table-summary{margin:0 0 8px}
+
+/* V8.5.2: independent 10-row pagination for each list */
+.pagination-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 2px 4px;color:#718096;font-size:13px}
+.pagination-controls{display:flex;align-items:center;gap:10px}
+.pagination-controls span{min-width:76px;text-align:center;color:#52657d}
+.pagination-controls .btn:disabled{opacity:.42;cursor:not-allowed}
+
+/* V8.5.4: employee/card page uses a strict vertical stack inside one shared panel */
+.employee-binding-filter{display:flex;align-items:flex-end;flex-wrap:wrap;width:100%;box-sizing:border-box}
+.employee-binding-filter .search-field{flex:1 1 300px;min-width:240px}
+.employee-card-management-panel{display:block!important;width:100%;box-sizing:border-box;clear:both}
+.employee-card-management-panel>.management-list-block,
+.employee-card-management-panel>.management-history-block{display:block!important;position:relative;width:100%;max-width:100%;min-width:0;float:none;clear:both;box-sizing:border-box}
+.employee-card-management-panel>.management-history-block{margin-top:26px;padding-top:22px;border-top:1px solid #e8edf3}
+.employee-card-management-panel .section-heading{display:flex;align-items:flex-start;justify-content:space-between;width:100%;margin:0 0 14px;float:none}
+.employee-card-management-panel .section-heading h2,
+.employee-card-management-panel .section-heading h3{margin:0 0 5px}
+.employee-card-management-panel .section-heading p{margin:0}
+.employee-card-management-panel .table-wrap{display:block;width:100%;max-width:100%;box-sizing:border-box;clear:both}
+.employee-card-management-panel .table-wrap table{width:100%}
+.employee-card-management-panel .pagination-row{display:flex;width:100%;box-sizing:border-box;clear:both}
+.employee-card-management-panel .table-summary{display:block;width:100%;margin:0 0 8px}
