@@ -7,16 +7,22 @@ const uid = ref('A0012345')
 const error = ref('')
 const showCard = ref(false)
 const started = ref(false)
-const slides = [
-  { title: '歡迎使用電動車充電服務', text: '請先閱讀充電設備使用須知，並依現場規範操作。', tag: '使用公告', tone: 'purple' },
-  { title: '充電安全提醒', text: '請確認充電設備與車輛連接正常，使用時留意周遭安全。', tag: '安全提醒', tone: 'yellow' },
-  { title: '設備維護公告', text: '如遇設備異常，請勿使用並聯繫管理人員。', tag: '設備公告', tone: 'teal' }
-]
+// Online image references are used for the demo. Local SVG fallbacks keep the kiosk carousel working offline.
+const slides = ref([
+  { image: '/announcement-merck.webp', fallback: '/announcement-merck.webp', alt: '客戶充電樁使用須知公告示意' },
+  { image: 'https://static.wixstatic.com/media/e8a42a_feb594272bd74eba8dd8653695c721f7~mv2.png/v1/fill/w_1024%2Ch_576%2Cal_c/e8a42a_feb594272bd74eba8dd8653695c721f7~mv2.png', fallback: '/ev-demo-corporate.svg', alt: '企業電動車充電場域示意' },
+  { image: 'https://promwad.com/sites/default/files/predictive-maintenance-ev-charging.jpg', fallback: '/ev-demo-safety.svg', alt: '電動車充電安全公告示意' }
+])
 const slideIndex = ref(0)
 let slideTimer
-onMounted(() => { slideTimer = setInterval(() => slideIndex.value = (slideIndex.value + 1) % slides.length, 3000) })
+onMounted(() => { slideTimer = setInterval(() => { if (!started.value) slideIndex.value = (slideIndex.value + 1) % slides.value.length }, 3000) })
 onUnmounted(() => clearInterval(slideTimer))
 watch(selected, () => { error.value = '' })
+function handleImageError(slide, event) {
+  if (slide && event.target.src !== new URL(slide.fallback, window.location.origin).href) {
+    slide.image = slide.fallback
+  }
+}
 function choose(value) {
   selected.value = value
   showCard.value = true
@@ -36,17 +42,22 @@ function emitResult() {
 function back() { selected.value = ''; showCard.value = false; error.value = ''; emit('back') }
 </script>
 <template>
-  <div class="entry-screen idle-screen" @click.self="started = true">
+  <div class="entry-screen idle-screen" :class="{ 'service-selection-screen': started }" @click.self="started = true">
     <section v-if="!started" class="idle-carousel" @click="started = true">
-      <div class="idle-slide" :class="slides[slideIndex].tone"><small>{{ slides[slideIndex].tag }} · {{ slideIndex + 1 }} / 3</small><h1>{{ slides[slideIndex].title }}</h1><p>{{ slides[slideIndex].text }}</p><div class="idle-dots"><i v-for="(slide,i) in slides" :key="i" :class="{active:slideIndex===i}"></i></div></div>
-      <button class="idle-enter" @click.stop="started = true">點擊畫面開始使用　→</button>
-      <small class="idle-timer">公告每 3 秒自動輪播</small>
+      <div class="idle-stage">
+        <img class="idle-stage-backdrop" :src="slides[slideIndex].image" alt="" aria-hidden="true" @error="handleImageError(slides[slideIndex], $event)" />
+        <img class="idle-stage-image" :key="slideIndex" :src="slides[slideIndex].image" :alt="slides[slideIndex].alt" @error="handleImageError(slides[slideIndex], $event)" />
+        <div class="idle-dots" aria-label="公告輪播頁數"><i v-for="(slide,i) in slides" :key="i" :class="{active:slideIndex===i}"></i></div>
+      </div>
+      <div class="idle-footer">
+        <button class="idle-enter" @click.stop="started = true">點擊畫面開始使用　→</button>
+        <small class="idle-timer">公告每 3 秒自動輪播</small>
+      </div>
     </section>
     <section v-else class="entry-card">
-      <div class="entry-brand">MERCK GROUP IN TAIWAN · EV CHARGING</div>
       <div class="entry-logo">⚡</div>
-      <h1>Merck Group in Taiwan｜充電管理系統</h1>
-      <p class="muted">歡迎使用，請選擇服務項目</p>
+      <h1>充電管理中控台</h1>
+      <p class="muted">請選擇服務項目</p>
       <div v-if="!showCard" class="entry-options">
         <button class="entry-option" @click="choose('charge')"><span>⚡</span><strong>我要充電</strong><small>員工選擇充電設備並取得 QR Code</small></button>
         <button class="entry-option" @click="choose('manage')"><span>⚙</span><strong>我要管理</strong><small>管理者查看設備與管理資料</small></button>

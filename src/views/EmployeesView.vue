@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 const props = defineProps({ employees: { type: Array, required: true }, suspendEmployeeId: { type: String, default: '' } })
 const emit = defineEmits(['add','toggle-role','toggle-active','bind-card','export','clear-suspend-target'])
 const search = ref('')
+const cardStatusFilter = ref('全部狀態')
 const bindingDateFrom = ref('')
 const bindingDateTo = ref('')
 const appliedCardKeyword = ref('')
@@ -12,6 +13,9 @@ const pageSize = 10
 const cardPage = ref(1)
 const bindingHistoryPage = ref(1)
 const showAdd = ref(false)
+const importPreview = ref(null)
+const importFileName = ref('')
+const importedUnboundCards = ref([])
 const form = ref({ id:'', name:'', dept:'', role:'一般員工' })
 const cardOverrides = ref({})
 const selectedEmployees = ref({})
@@ -33,7 +37,7 @@ const filteredBindingHistory = computed(() => bindingHistory.value.filter(x => {
    return keywordOk && (!appliedBindingFrom.value || day >= appliedBindingFrom.value) && (!appliedBindingTo.value || day <= appliedBindingTo.value)
  }))
  function applyBindingHistoryFilters(){ appliedCardKeyword.value=search.value; appliedBindingFrom.value=bindingDateFrom.value; appliedBindingTo.value=bindingDateTo.value; cardPage.value=1; bindingHistoryPage.value=1 }
- function clearBindingHistoryFilters(){ search.value=''; appliedCardKeyword.value=''; bindingDateFrom.value=''; bindingDateTo.value=''; appliedBindingFrom.value=''; appliedBindingTo.value=''; cardPage.value=1; bindingHistoryPage.value=1 }
+ function clearBindingHistoryFilters(){ search.value=''; appliedCardKeyword.value=''; cardStatusFilter.value='全部狀態'; bindingDateFrom.value=''; bindingDateTo.value=''; appliedBindingFrom.value=''; appliedBindingTo.value=''; cardPage.value=1; bindingHistoryPage.value=1 }
  function recordBinding(uid, from, to, reason) {
   bindingHistory.value.unshift({
     id: Date.now() + Math.random(),
@@ -43,9 +47,9 @@ const filteredBindingHistory = computed(() => bindingHistory.value.filter(x => {
   })
 }
 const authorizedUids = ['A0012345','A0012346','A0012347','A0012348','A0012349','A0012350','A0012351','A0012352','A0012353','A0012354','A0012355']
-const allCards = computed(() => authorizedUids.map(uid => { const e=props.employees.find(x=>x.uid===uid); return { uid, employee:e?.name || '—', employeeId:e?.id || '—', employeeRef:e || null, status:cardOverrides.value[uid] || (e ? (e.active ? '使用中' : '停用') : '未綁定') } }))
+const allCards = computed(() => [...new Set([...authorizedUids, ...props.employees.map(e=>e.uid).filter(Boolean), ...importedUnboundCards.value])].map(uid => { const e=props.employees.find(x=>x.uid===uid); return { uid, employee:e?.name || '—', employeeId:e?.id || '—', employeeRef:e || null, status:cardOverrides.value[uid] || (e ? (e.cardStatus || (e.active ? '使用中' : '停用')) : '未綁定') } }))
 watch(() => props.suspendEmployeeId, (id) => { if(id){ const card=allCards.value.find(c=>c.employeeId===id); if(card) openSuspend(card); emit('clear-suspend-target') } }, { immediate: true })
-const cardRows = computed(() => allCards.value.filter(c => !appliedCardKeyword.value || [c.uid,c.employee,c.employeeId,c.status].some(v=>String(v).toLowerCase().includes(appliedCardKeyword.value.trim().toLowerCase()))))
+const cardRows = computed(() => allCards.value.filter(c => (!appliedCardKeyword.value || [c.uid,c.employee,c.employeeId,c.status].some(v=>String(v).toLowerCase().includes(appliedCardKeyword.value.trim().toLowerCase()))) && (cardStatusFilter.value === '全部狀態' || c.status === cardStatusFilter.value)))
 const pagedCardRows = computed(() => cardRows.value.slice((cardPage.value-1)*pageSize,cardPage.value*pageSize))
 const pagedBindingHistory = computed(() => filteredBindingHistory.value.slice((bindingHistoryPage.value-1)*pageSize,bindingHistoryPage.value*pageSize))
 const cardPageCount = computed(() => Math.max(1,Math.ceil(cardRows.value.length/pageSize)))
@@ -106,6 +110,38 @@ function confirmSuspend(){
   cardOverrides.value[card.uid]='停用'
   suspendTarget.value=null
 }
+function parseCsvLine(line){ const out=[]; let cur='', quoted=false; for(let i=0;i<line.length;i++){const ch=line[i]; if(ch==='"' && line[i+1]==='"' && quoted){cur+='"';i++} else if(ch==='"'){quoted=!quoted} else if(ch===','&&!quoted){out.push(cur);cur=''} else cur+=ch} out.push(cur); return out }
+async function unzipXlsxEntries(buffer){
+ const bytes=new Uint8Array(buffer), view=new DataView(buffer); let eocd=-1
+ for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65558);i--){if(view.getUint32(i,true)===0x06054b50){eocd=i;break}}
+ if(eocd<0) throw new Error('無法讀取 XLSX 壓縮檔')
+ const count=view.getUint16(eocd+10,true), cdOffset=view.getUint32(eocd+16,true), entries={}; let pos=cdOffset
+ for(let n=0;n<count;n++){if(view.getUint32(pos,true)!==0x02014b50) break; const method=view.getUint16(pos+10,true), csize=view.getUint32(pos+20,true), nameLen=view.getUint16(pos+28,true), extraLen=view.getUint16(pos+30,true), commentLen=view.getUint16(pos+32,true), local=view.getUint32(pos+42,true); const name=new TextDecoder().decode(bytes.slice(pos+46,pos+46+nameLen)); const lp=local+30+view.getUint16(local+26,true)+view.getUint16(local+28,true); let data=bytes.slice(lp,lp+csize); if(method===8)data=new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()); else if(method!==0) throw new Error('不支援此 XLSX 壓縮格式'); entries[name]=new TextDecoder().decode(data); pos+=46+nameLen+extraLen+commentLen }
+ return entries
+}
+async function parseXlsx(file){
+ const entries=await unzipXlsxEntries(await file.arrayBuffer()); const parser=new DOMParser()
+ const shared=entries['xl/sharedStrings.xml']?Array.from(parser.parseFromString(entries['xl/sharedStrings.xml'],'application/xml').getElementsByTagName('si')).map(si=>Array.from(si.getElementsByTagName('t')).map(t=>t.textContent).join('')):[]
+ const xml=parser.parseFromString(entries['xl/worksheets/sheet1.xml'],'application/xml'), rows=[]
+ for(const row of Array.from(xml.getElementsByTagName('row'))){const values=[];for(const cell of Array.from(row.getElementsByTagName('c'))){const col=(cell.getAttribute('r')||'A1').match(/[A-Z]+/)?.[0]||'A';let idx=0;for(const ch of col)idx=idx*26+ch.charCodeAt(0)-64;const type=cell.getAttribute('t'),v=cell.getElementsByTagName('v')[0]?.textContent||'',inline=Array.from(cell.getElementsByTagName('t')).map(t=>t.textContent).join('');values[idx-1]=type==='s'?(shared[Number(v)]||''):type==='inlineStr'?inline:v}rows.push(values)}
+ return rows
+}
+function buildImportPreview(rows){
+ const headers=rows[0].map(x=>String(x||'').trim()), index=name=>headers.indexOf(name)
+ const records=rows.slice(1).map(c=>({id:String(c[index('員工編號')]||'').trim(),name:String(c[index('員工姓名')]||'').trim(),dept:String(c[index('部門')]||'').trim(),uid:String(c[index('RFID UID')]||'').trim(),role:String(c[index('管理者權限')]||'N').toUpperCase()==='Y'?'管理者':'一般員工',cardStatus:String(c[index('卡片狀態')]||'未綁定').trim(),suspendStart:c[index('停用開始日')]||'',suspendEnd:c[index('停用結束日')]||'',reason:String(c[index('本次異動說明')]||'').trim()})).filter(x=>(x.id&&x.name)||x.uid)
+ if(!records.length)throw new Error('找不到有效的員工資料，請確認欄位名稱及必填資料')
+ const employeeRows=records.filter(r=>r.id&&r.name),old=new Map(props.employees.map(e=>[e.id,e])),incoming=new Map(employeeRows.map(e=>[e.id,e])),changes=[]
+ employeeRows.forEach(r=>{const o=old.get(r.id);if(!o)changes.push({type:'新增員工',name:r.name,uid:r.uid,reason:r.reason||'新增員工資料'});else{if(o.name!==r.name||o.dept!==r.dept)changes.push({type:'修改員工資料',name:r.name,uid:r.uid,reason:r.reason});if((o.uid||'')!==(r.uid||''))changes.push({type:r.uid?'卡片綁定／更換':'解除卡片綁定',name:r.name,uid:r.uid||o.uid,reason:r.reason})}})
+ props.employees.filter(e=>!incoming.has(e.id)).forEach(e=>changes.push({type:'移除員工',name:e.name,uid:e.uid,reason:e.importReason||`${e.name}離職，解除卡片綁定`}))
+ importPreview.value={rows:employeeRows,unboundRows:records.filter(r=>!r.id&&r.uid),changes}
+}
+async function readImportFile(event){
+ const file=event.target.files?.[0];if(!file)return;importFileName.value=file.name
+ try{if(file.name.toLowerCase().endsWith('.xlsx'))buildImportPreview(await parseXlsx(file));else{const text=await file.text(),lines=text.replace(/^\ufeff/,'').split(/\r?\n/).filter(x=>x.trim());if(lines.length<2)throw new Error('匯入檔案沒有員工資料');buildImportPreview([parseCsvLine(lines[0]),...lines.slice(1).map(parseCsvLine)])}}
+ catch(err){alert(`匯入失敗：${err.message||'請檢查檔案格式'}`)}
+}
+
+function confirmImport(){ if(!importPreview.value) return; importedUnboundCards.value=importPreview.value.unboundRows.map(r=>r.uid); importPreview.value.unboundRows.forEach(r=>{cardOverrides.value[r.uid]=r.cardStatus||'未綁定'}); emit('import',importPreview.value.rows); importPreview.value=null; importFileName.value=''; alert('匯入資料已套用（前端示意）；正式版仍需由資料庫保存匯入快照及異動歷史。') }
 function save(){
   if (!form.value.id || !form.value.name) return alert('請填寫員工編號及姓名')
   if (props.employees.some(e=>e.id===form.value.id)) return alert('員工編號已存在')
@@ -113,20 +149,43 @@ function save(){
   form.value={id:'',name:'',dept:'',role:'一般員工'};showAdd.value=false
 }
 
-function exportBindingHistory(){
-  const rows=[['異動時間','卡片 UID','原綁定員工','新綁定員工','異動原因','操作人員'],
-    ...filteredBindingHistory.value.map(x=>[x.time,x.uid,x.from,x.to,x.reason,x.operator])]
-  const escapeCell = v => String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;')
-  const html='\\ufeff<html><head><meta charset="UTF-8"></head><body><table>'+rows.map((r,i)=>'<tr>'+r.map(v=>`<${i===0?'th':'td'}>${escapeCell(v)}</${i===0?'th':'td'}>`).join('')+'</tr>').join('')+'</table></body></html>'
-  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8;'})
-  const url=URL.createObjectURL(blob)
-  const a=document.createElement('a');a.href=url;a.download='卡片綁定異動紀錄.xls';a.click();URL.revokeObjectURL(url)
+function xmlEscape(value){return String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&apos;')}
+function excelColumn(index){let n=index+1,out='';while(n){const r=(n-1)%26;out=String.fromCharCode(65+r)+out;n=Math.floor((n-1)/26)}return out}
+function makeCrcTable(){const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);table[n]=c>>>0}return table}
+const crcTable=makeCrcTable()
+function crc32(bytes){let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0}
+function zipStore(files){
+  const encoder=new TextEncoder(), localParts=[], centralParts=[];let offset=0
+  for(const [name,content] of Object.entries(files)){
+    const nameBytes=encoder.encode(name),data=encoder.encode(content),crc=crc32(data)
+    const local=new Uint8Array(30+nameBytes.length+data.length),lv=new DataView(local.buffer)
+    lv.setUint32(0,0x04034b50,true);lv.setUint16(4,20,true);lv.setUint16(6,0x0800,true);lv.setUint16(8,0,true);lv.setUint32(14,crc,true);lv.setUint32(18,data.length,true);lv.setUint32(22,data.length,true);lv.setUint16(26,nameBytes.length,true);local.set(nameBytes,30);local.set(data,30+nameBytes.length);localParts.push(local)
+    const central=new Uint8Array(46+nameBytes.length),cv=new DataView(central.buffer)
+    cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);cv.setUint16(8,0x0800,true);cv.setUint16(10,0,true);cv.setUint32(16,crc,true);cv.setUint32(20,data.length,true);cv.setUint32(24,data.length,true);cv.setUint16(28,nameBytes.length,true);cv.setUint32(42,offset,true);central.set(nameBytes,46);centralParts.push(central);offset+=local.length
+  }
+  const centralSize=centralParts.reduce((n,p)=>n+p.length,0),end=new Uint8Array(22),ev=new DataView(end.buffer)
+  ev.setUint32(0,0x06054b50,true);ev.setUint16(8,centralParts.length,true);ev.setUint16(10,centralParts.length,true);ev.setUint32(12,centralSize,true);ev.setUint32(16,offset,true)
+  return new Blob([...localParts,...centralParts,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
 }
-
+function createXlsxBlob(rows,sheetName){
+  const sheetRows=rows.map((row,r)=>`<row r="${r+1}">${row.map((value,c)=>{const ref=`${excelColumn(c)}${r+1}`;return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`}).join('')}</row>`).join('')
+  const files={
+    '[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+    '_rels/.rels':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    'xl/workbook.xml':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels':'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+    'xl/worksheets/sheet1.xml':`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData><autoFilter ref="A1:${excelColumn(Math.max(0,(rows[0]||[]).length-1))}${Math.max(1,rows.length)}"/></worksheet>`
+  }
+  return zipStore(files)
+}
+function downloadXlsx(filename,rows,sheetName){const url=URL.createObjectURL(createXlsxBlob(rows,sheetName));const a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function exportBindingHistory(){
+  const rows=[['異動時間','卡片 UID','原綁定員工','新綁定員工','異動原因','操作人員'],...bindingHistory.value.map(x=>[x.time,x.uid,x.from,x.to,x.reason,x.operator])]
+  downloadXlsx('卡片綁定異動紀錄.xlsx',rows,'綁定異動紀錄')
+}
 function exportCards(){
-  const rows=[['卡片 UID','卡片狀態','綁定員工','員工編號','部門','管理者權限','員工帳號狀態'],...allCards.value.map(c=>[c.uid,c.status,c.employee,c.employeeId,c.employeeRef?.dept||'',c.employeeRef?.role||'',c.employeeRef?.active?'啟用':'停用'])]
-  const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\r\n')
-  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));const a=document.createElement('a');a.href=url;a.download='授權卡片清單.csv';a.click();URL.revokeObjectURL(url)
+  const rows=[['員工編號','員工姓名','部門','RFID UID','管理者權限','卡片狀態','停用開始日','停用結束日','本次異動說明'],...allCards.value.map(c=>[c.employeeRef?.id||'',c.employeeRef?.name||'',c.employeeRef?.dept||'',c.uid,c.employeeRef?.role==='管理者'?'Y':'N',c.status,c.employeeRef?.suspendStart||'',c.employeeRef?.suspendEnd||'', ''])]
+  downloadXlsx('員工卡片清單.xlsx',rows,'員工卡片清單')
 }
 </script>
 <template>
@@ -134,11 +193,11 @@ function exportCards(){
  <div class="export-toolbar">
   <button class="btn btn-outline" @click="exportCards">↓ 匯出卡片清單</button>
   <button class="btn btn-outline" @click="exportBindingHistory">↓ 匯出綁定異動紀錄 Excel</button>
-  <button class="btn btn-primary" @click="showAdd=true">＋ 新增員工</button>
+  <a class="btn btn-outline" href="/員工卡片匯入範本.xlsx" download>↓ 下載 Excel 匯入範本</a><label class="btn btn-primary import-file-button">↑ 匯入員工名單<input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="readImportFile" hidden /></label>
  </div>
 
  <div class="stats-cards">
-  <article><small>授權卡片</small><strong>100</strong><span>供應商預載（示意）</span></article>
+  <article><small>授權卡片</small><strong>{{allCards.length}}</strong><span>卡號清單（示意）</span></article>
   <article><small>已綁定</small><strong>{{boundCount}}</strong><span>張</span></article>
   <article><small>未綁定</small><strong>{{unboundCount}}</strong><span>張</span></article>
   <article><small>遺失／損壞／停用</small><strong>{{allCards.filter(c=>['遺失','損壞','停用'].includes(c.status)).length}}</strong><span>張</span></article>
@@ -150,6 +209,7 @@ function exportCards(){
    <label>搜尋卡片／員工／異動內容</label>
    <input v-model="search" placeholder="卡片 UID、員工姓名、編號、異動原因或操作人員" />
   </div>
+  <div class="filter-field card-status-filter"><label>卡片狀態（僅篩選授權卡片清單）</label><select v-model="cardStatusFilter" @change="cardPage=1"><option>全部狀態</option><option>使用中</option><option>未綁定</option><option>停用</option><option>遺失</option><option>損壞</option></select></div>
   <div class="filter-field"><label>異動開始日期</label><input type="date" v-model="bindingDateFrom" /></div>
   <div class="filter-field"><label>異動結束日期</label><input type="date" v-model="bindingDateTo" /></div>
   <button class="btn btn-outline" @click="applyBindingHistoryFilters">查詢</button>
@@ -160,43 +220,21 @@ function exportCards(){
  <div class="management-combined-section employee-card-management-panel">
   <section class="management-list-block">
    <div class="section-heading">
-    <div><h2>授權卡片清單</h2><p>查看授權卡片、綁定員工及卡片管理狀態。</p></div>
+    <div><h2>授權卡片清單</h2></div>
    </div>
    <div class="table-wrap">
     <table>
-     <thead><tr><th>授權卡片 UID</th><th>卡片狀態</th><th>綁定員工</th><th>員工編號／部門</th><th>管理者權限</th><th>員工帳號</th><th>卡片操作</th></tr></thead>
+     <thead><tr><th>授權卡片 UID</th><th>卡片狀態</th><th>綁定員工</th><th>員工編號／部門</th><th>管理者權限</th></tr></thead>
      <tbody>
       <tr v-for="card in pagedCardRows" :key="card.uid">
        <td><code>{{card.uid}}</code></td>
        <td><span class="status" :class="card.status==='使用中'?'available':card.status==='未綁定'?'neutral':'fault'">{{card.status}}</span></td>
        <td v-if="card.employeeRef"><strong>{{card.employeeRef.name}}</strong></td>
-       <td v-else>
-        <select v-model="selectedEmployees[card.uid]" :disabled="card.status!=='未綁定'">
-         <option value="">選擇員工綁定</option>
-         <option v-for="e in props.employees.filter(e=>!e.uid && e.active)" :key="e.id" :value="e.id">{{e.name}}（{{e.id}}）</option>
-        </select>
-        <button v-if="selectedEmployees[card.uid]" class="btn btn-small btn-primary" @click="saveBinding(card)">確認綁定</button>
-       </td>
+       <td v-else>—</td>
        <td>{{card.employeeRef ? `${card.employeeId}｜${card.employeeRef.dept}` : '—'}}</td>
-       <td>
-        <label v-if="card.employeeRef" class="switch-control"><input type="checkbox" :checked="card.employeeRef.role==='管理者'" @change="emit('toggle-role',card.employeeId)"/><span class="switch-slider"></span></label>
-        <span v-else>—</span>
-       </td>
-       <td>
-        <label v-if="card.employeeRef" class="switch-control"><input type="checkbox" :checked="card.employeeRef.active" @change="emit('toggle-active',card.employeeId)"/><span class="switch-slider"></span></label>
-        <span v-else>—</span>
-       </td>
-       <td class="card-actions">
-        <button v-if="card.status==='使用中'" class="btn btn-small btn-outline" @click="unbind(card)">解除綁定</button>
-        <button v-if="card.status==='使用中'" class="btn btn-small btn-outline" @click="setCardStatus(card,'遺失')">掛失</button>
-        <button v-if="card.status==='使用中'" class="btn btn-small btn-outline" @click="setCardStatus(card,'損壞')">標記損壞</button>
-        <button v-if="['未綁定','使用中'].includes(card.status)" class="btn btn-small btn-outline" @click="openSuspend(card)">停用</button>
-        <button v-if="card.status==='遺失'" class="btn btn-small btn-outline" @click="setCardStatus(card,'未綁定')">尋回後解除綁定</button>
-        <button v-if="card.status==='損壞'" class="btn btn-small btn-outline" @click="setCardStatus(card,'未綁定')">恢復未綁定</button>
-        <button v-if="card.status==='停用'" class="btn btn-small btn-outline" @click="restoreCard(card)">恢復授權</button>
-       </td>
+       <td>{{card.employeeRef?.role === '管理者' ? '是' : '否'}}</td>
       </tr>
-      <tr v-if="!cardRows.length"><td colspan="7" class="empty-cell">沒有符合條件的卡片</td></tr>
+      <tr v-if="!cardRows.length"><td colspan="5" class="empty-cell">沒有符合條件的卡片</td></tr>
      </tbody>
     </table>
    </div>
@@ -235,8 +273,9 @@ function exportCards(){
   </section>
  </div>
 
- <div class="note-box">卡片 UID 清單由供應商提供並預先載入讀卡控制器；管理者只需從未綁定卡片中選擇員工。重新綁定卡片不會改寫過去的充電紀錄；歷史紀錄保留當時的員工編號及姓名快照。管理者權限與員工帳號啟用狀態可直接在同一頁調整。離職歸還卡片應解除綁定後回到未綁定；遺失或損壞卡片應停用舊卡授權。</div>
+ <div class="note-box">員工及卡片資料僅透過 Excel 匯入管理，卡片清單為唯讀查詢；系統比對前次成功匯入資料，依異動說明建立歷史紀錄。卡機不預載員工授權名單，而是刷卡時由管理系統資料庫即時驗證。重新綁定卡片不會改寫過去的充電紀錄；歷史紀錄保留當時的員工編號及姓名快照。管理者權限可透過匯入名單更新。離職歸還卡片應解除綁定後回到未綁定；遺失或損壞卡片應停用舊卡授權。</div>
 
+ <div v-if="importPreview" class="modal-backdrop" @click.self="importPreview=null"><div class="dialog import-preview-dialog"><div class="dialog-head"><h3>員工名單匯入預覽</h3><button class="icon-close" @click="importPreview=null">×</button></div><p class="muted">檔案：{{importFileName}}｜共 {{importPreview.rows.length}} 筆員工資料</p><div class="import-change-summary"><strong>系統比對結果：{{importPreview.changes.length}} 筆異動</strong><div v-for="(c,i) in importPreview.changes" :key="i" class="import-change-row"><b>{{c.type}}</b><span>{{c.name}}<small v-if="c.uid">｜{{c.uid}}</small></span><em>{{c.reason || '未填寫異動說明'}}</em></div><p v-if="!importPreview.changes.length" class="muted">與前次匯入資料相同，沒有異動。</p></div><div class="dialog-actions"><button class="btn btn-light" @click="importPreview=null">取消</button><button class="btn btn-primary" @click="confirmImport">確認匯入</button></div></div></div>
  <div v-if="unbindTarget" class="modal-backdrop" @click.self="unbindTarget=null"><div class="dialog">
   <div class="dialog-head"><h3>解除卡片綁定</h3><button class="icon-close" @click="unbindTarget=null">×</button></div>
   <p>卡片 {{unbindTarget.uid}}｜{{unbindTarget.employee}}（{{unbindTarget.employeeId}}）</p>

@@ -16,14 +16,14 @@ export const initialEmployees = [
 export const initialStations = [
   ...Array.from({ length: 8 }, (_, i) => ({
     id: `A${String(i + 1).padStart(2, '0')}`,
-    name: `一般充電樁 ${i + 1}`,
+    name: '',
     kind: '一般充電樁',
     status: [1, 4, 6].includes(i) ? 'charging' : i === 7 ? 'fault' : 'available',
     amps: i === 1 ? 16 : i === 4 ? 12 : i === 6 ? 18 : 0,
-    qrCode: `SEFUS-${String(i + 1).padStart(3, '0')}`
+    qrCode: `SEFUS-${String(i + 1).padStart(3, '0')}`, qrUrl: ''
   })),
-  { id: 'F01-1', name: '快充站 1 號槍', kind: '快充設備', status: 'charging', amps: 42, qrCode: 'SEFUS-F01-1' },
-  { id: 'F01-2', name: '快充站 2 號槍', kind: '快充設備', status: 'available', amps: 0, qrCode: 'SEFUS-F01-2' }
+  { id: 'F01-1', name: '', kind: '快充設備', status: 'charging', amps: 42, qrCode: 'SEFUS-F01-1', qrUrl: '' },
+  { id: 'F01-2', name: '', kind: '快充設備', status: 'available', amps: 0, qrCode: 'SEFUS-F01-2', qrUrl: '' }
 ]
 
 export const initialLogs = [

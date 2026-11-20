@@ -9,7 +9,7 @@ defineEmits(['show-qr'])
     <div class="station-grid">
       <article v-for="station in stations" :key="station.id" class="station-card">
         <div class="station-top"><strong>{{ station.id }}</strong><span class="status" :class="station.status">{{ statusLabels[station.status] }}</span></div>
-        <div class="muted">{{ station.name }}</div>
+        
         <div class="station-detail">{{ station.status === 'charging' ? `目前偵測電流：${station.amps} A` : station.status === 'available' ? '目前未偵測到電流' : '請確認設備及通訊狀態' }}</div>
         <button class="btn btn-outline" @click="$emit('show-qr', station)">▦ 查看 QR Code</button>
       </article>

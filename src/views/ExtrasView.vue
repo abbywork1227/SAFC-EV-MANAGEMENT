@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref } from 'vue'
-const emit = defineEmits(['go-card-management'])
 const props = defineProps({ page: String, stations: Array, logs: Array, operator: { type: String, default: '管理者' } })
 const title = computed(() => ({announcements:'首頁公告管理', reports:'統計報表', equipment:'設備狀態管理與異常紀錄', points:'員工積點（暫定功能）'}[props.page] || '管理功能'))
 const announcements = ref([
@@ -27,6 +26,22 @@ const deviceAxisTicks = computed(() => Array.from({length:6},(_,i)=>Math.round(d
 const activeUsers = {'A02':'陳小華','A05':'黃志偉','A07':'許庭瑜','F01-1':'王小明'}
 function setPeriod(value){ period.value=value; const end='2026-11-18'; dateTo.value=end; if(value==='本月') dateFrom.value='2026-11-01'; else if(value==='本年度') dateFrom.value='2026-01-01'; else dateFrom.value='2026-10-20'; appliedFrom.value=dateFrom.value; appliedTo.value=dateTo.value }
 function applyReportFilters(){ appliedFrom.value=dateFrom.value; appliedTo.value=dateTo.value }
+
+const totalUseMinutes = computed(() => filteredLogs.value.reduce((sum, log) => {
+ const d=String(log.duration||''); const h=d.match(/(\d+)\s*小時/); const m=d.match(/(\d+)\s*分/)
+ return sum + (h ? Number(h[1])*60 : 0) + (m ? Number(m[1]) : 0)
+},0))
+const averageUseMinutes = computed(() => filteredLogs.value.length ? Math.round(totalUseMinutes.value/filteredLogs.value.length) : 0)
+const totalUseHours = computed(() => (totalUseMinutes.value/60).toFixed(1))
+const averageUseLabel = computed(() => `${Math.floor(averageUseMinutes.value/60)} 小時 ${averageUseMinutes.value%60} 分`)
+const reportDays = computed(() => {
+ const a=new Date(appliedFrom.value+'T00:00:00'), b=new Date(appliedTo.value+'T00:00:00')
+ return Math.max(1,Math.floor((b-a)/86400000)+1)
+})
+const historicalUtilization = computed(() => {
+ const capacity=props.stations.length*reportDays.value*24*60
+ return capacity ? `${(totalUseMinutes.value/capacity*100).toFixed(1)}%` : '0%'
+})
 const activeTab = ref('usage')
 const carouselSeconds = ref('3')
 const equipmentKeyword = ref('')
@@ -108,7 +123,6 @@ function savePointDeduction(){
  row.points=Math.min(3,row.points+Number(pointAmount.value)); row.reason=pointReason.value
  pointHistory.value.unshift({time:new Date().toLocaleString('zh-TW',{hour12:false}),id:row.id,name:row.name,amount:row.points-before,reason:pointReason.value,operator:props.operator})
  pointModal.value=null
- if(row.points>=3 && before<3 && confirm(`${row.name} 累計扣點已達 3 點。是否前往員工／卡片管理設定停用期間？`)) emit('go-card-management',row.id)
 }
 function saveStatuses(){ const changed=props.stations.filter(s=>s.status!==originalStatuses.value[s.id]); if(changed.some(s=>!String(changeReasons.value[s.id]||'').trim())) return alert('請為每一筆設備狀態變更填寫原因。'); const now=new Date().toLocaleString('zh-TW',{hour12:false}); changed.forEach(s=>{statusHistory.value.unshift({id:Date.now()+Math.random(),station:s.id,from:statusText(originalStatuses.value[s.id]),to:statusText(s.status),reason:changeReasons.value[s.id],operator:props.operator,time:now});originalStatuses.value[s.id]=s.status;changeReasons.value[s.id]=''}); alert(changed.length ? '設備狀態及異動紀錄已儲存（前端示意）' : '設備狀態沒有變更。') }
 function statusText(v){return ({available:'可使用',charging:'使用中',maintenance:'維修中',fault:'故障中',offline:'離線'})[v]||v}
@@ -133,17 +147,16 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
  <template v-else-if="page==='reports'">
   <div class="export-toolbar"><button class="btn btn-primary" @click="notice('報表匯出示意：正式版將輸出 Excel 至 USB')">↓ 匯出 Excel（USB）</button></div>
   <div class="filter-panel"><div class="filter-field"><label>統計區間</label><select :value="period" @change="setPeriod($event.target.value)"><option>本月</option><option>本年度</option><option>近 30 天</option></select></div><div class="filter-field"><label>起始日期</label><input type="date" v-model="dateFrom" /></div><div class="filter-field"><label>結束日期</label><input type="date" v-model="dateTo" /></div><button class="btn btn-outline" @click="applyReportFilters">查詢</button></div>
-  <div class="stats-cards"><article><small>充電使用次數</small><strong>{{filteredLogs.length}}</strong><span>次</span></article><article><small>設備總數</small><strong>{{stations.length}}</strong><span>個充電位置</span></article><article><small>目前使用中</small><strong>{{stations.filter(s=>s.status==='charging').length}}</strong><span>個</span></article><article><small>設備使用率</small><strong>36.8%</strong><span>示意數據</span></article></div>
-  <div class="report-tabs"><button :class="{active:activeTab==='usage'}" @click="activeTab='usage'">使用趨勢</button><button :class="{active:activeTab==='device'}" @click="activeTab='device'">設備統計</button><button :class="{active:activeTab==='peak'}" @click="activeTab='peak'">尖離峰分析</button></div>
+  <div class="stats-cards report-summary-cards"><article><small>充電總次數</small><strong>{{filteredLogs.length}}</strong><span>次｜選定期間</span></article><article><small>累計使用時數</small><strong>{{totalUseHours}}</strong><span>小時</span></article><article><small>平均單次使用時間</small><strong class="summary-long">{{averageUseLabel}}</strong><span>每次充電平均</span></article><article><small>設備使用率</small><strong>{{historicalUtilization}}</strong><span>依設備數與期間時數估算</span></article></div>
+  <div class="report-tabs"><button :class="{active:activeTab==='usage'}" @click="activeTab='usage'">使用趨勢</button><button :class="{active:activeTab==='device'}" @click="activeTab='device'">設備統計</button></div>
   <div class="report-panel" v-if="activeTab==='usage'"><h3>24 小時使用趨勢</h3><p>依目前查詢結果統計各時段充電開始次數；調整日期並按查詢後，圖表與數字會同步更新。</p><div class="bar-chart"><div v-for="(v,i) in hourlyCounts" :key="i"><span :style="{height:Math.max(3,(v/maxHourly)*100)+'%'}"></span><small v-if="i%3===0">{{String(i).padStart(2,'0')}}:00</small></div></div><div v-if="!filteredLogs.length" class="empty-cell">此統計區間沒有紀錄</div></div>
-  <div class="report-panel" v-else-if="activeTab==='device'"><h3>各設備使用次數</h3><div class="device-bars device-bars-single"><div class="device-chart-rows"><div v-for="s in deviceCounts" :key="s.id"><label>{{s.id}}</label><span><i :style="{width:Math.min(100,(s.count/deviceAxisMax)*100)+'%'}"></i></span><b>{{s.count}} 次</b></div></div><div class="device-axis"><span v-for="tick in deviceAxisTicks" :key="tick">{{tick}}</span></div><p class="chart-caption">橫軸：使用次數（次）；刻度依目前資料統一顯示。</p></div><div v-if="!filteredLogs.length" class="empty-cell">此統計區間沒有紀錄</div></div>
-  <div class="report-panel" v-else><h3>尖峰／離峰使用分析</h3><p>依目前查詢期間的充電開始時間分布進行統計推估，非客戶預先設定的固定電價時段。</p><div class="stats-cards"><article><small>統計推估尖峰時段</small><strong>{{peakLabel}}</strong><span>開始充電紀錄最多的時段</span></article><article><small>統計推估離峰時段</small><strong>{{offPeakLabel}}</strong><span>其餘非尖峰時段</span></article></div></div>
-  <div class="note-box">目前圖表依展示用紀錄計算，選擇統計區間並按查詢後會更新；實際資料以本機紀錄為準。現有電流感測僅可推估使用開始／結束，無法直接取得 kWh；使用率公式及尖離峰區間需由客戶確認。</div>
+  <div class="report-panel" v-else-if="activeTab==='device'"><h3>各設備使用次數排行</h3><div class="device-bars device-bars-single"><div class="device-chart-rows"><div v-for="s in deviceCounts" :key="s.id"><label>{{s.id}}</label><span><i :style="{width:Math.min(100,(s.count/deviceAxisMax)*100)+'%'}"></i></span><b>{{s.count}} 次</b></div></div><div class="device-axis"><span v-for="tick in deviceAxisTicks" :key="tick">{{tick}}</span></div><p class="chart-caption">橫軸：使用次數（次）；刻度依目前資料統一顯示。</p></div><div v-if="!filteredLogs.length" class="empty-cell">此統計區間沒有紀錄</div></div>
+  <div class="note-box">目前圖表依展示用紀錄計算，選擇統計區間並按查詢後會更新；實際資料以本機紀錄為準。設備使用率以累計使用時間除以設備數及查詢期間總可用時數估算，正式版仍需確認統計口徑。現有電流感測無法直接取得 kWh。</div>
  </template>
  <template v-else-if="page==='equipment'">
    <div class="export-toolbar"><button class="btn btn-outline" @click="exportStatusHistory">↓ 匯出設備異動紀錄 Excel</button></div>
-   <div class="section-heading"><div><h2>設備狀態</h2><p>查看設備目前狀態；管理者可調整設備狀態並留下異動紀錄。</p></div></div>
-  <div class="stats-cards status-six">
+   
+  <div class="stats-cards status-five">
    <article><small>可使用</small><strong>{{stations.filter(s=>s.status==='available').length}}</strong><span>個設備</span></article>
    <article><small>使用中</small><strong>{{stations.filter(s=>s.status==='charging').length}}</strong><span>個設備</span></article>
    <article><small>故障／維修中</small><strong>{{stations.filter(s=>['fault','maintenance'].includes(s.status)).length}}</strong><span>個設備</span></article>
@@ -158,11 +171,11 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
     <button class="btn btn-light" @click="clearStatusFilters">清除條件</button>
    </div>
    <div class="management-combined-section">
-   <div class="section-heading"><div><h3>設備清單</h3><p>顯示 {{filteredStations.length}} 台設備</p></div></div>
-   <div class="station-grid"> <article v-for="s in pagedStations" :key="s.id" class="station-card"><div class="station-top"><strong>{{s.id}}</strong><span class="status" :class="s.status==='maintenance'?'neutral':s.status">{{s.status==='available'?'可使用':s.status==='charging'?'使用中':s.status==='maintenance'?'維修中':s.status==='fault'?'故障中':'離線'}}</span></div><div class="muted">{{s.name}}</div><div class="filter-field"><label>管理者狀態設定</label><select v-model="s.status"><option value="available">可使用</option><option value="maintenance">維修中</option><option value="fault">故障中</option></select></div><div v-if="s.status==='charging'" class="current-user">目前使用者：<strong>{{activeUsers[s.id] || '員工示意資料'}}</strong></div><div v-if="s.status!==originalStatuses[s.id]" class="filter-field"><label>狀態變更原因（必填）</label><input v-model="changeReasons[s.id]" placeholder="例如：設備異常，暫停開放檢修" /></div></article></div>
+   <div class="section-heading equipment-status-heading"><div><h3>設備清單</h3><p>顯示 {{filteredStations.length}} 台設備</p></div><button class="btn btn-primary" @click="saveStatuses">儲存設備狀態</button></div>
+   <div class="station-grid"> <article v-for="s in pagedStations" :key="s.id" class="station-card"><div class="station-top"><strong>{{s.id}}</strong><span class="status" :class="s.status==='maintenance'?'neutral':s.status">{{s.status==='available'?'可使用':s.status==='charging'?'使用中':s.status==='maintenance'?'維修中':s.status==='fault'?'故障中':'離線'}}</span></div><div class="filter-field"><label>管理者狀態設定</label><select v-model="s.status"><option value="available">可使用</option><option value="maintenance">維修中</option><option value="fault">故障中</option></select></div><div v-if="s.status==='charging'" class="current-user">目前使用者：<strong>{{activeUsers[s.id] || '員工示意資料'}}</strong></div><div v-if="s.status!==originalStatuses[s.id]" class="filter-field"><label>狀態變更原因（必填）</label><input v-model="changeReasons[s.id]" placeholder="例如：設備異常，暫停開放檢修" /></div></article></div>
    <div class="pagination-row"><span>共 {{filteredStations.length}} 台設備｜每頁 10 筆</span><div class="pagination-controls"><button class="btn btn-small btn-outline" :disabled="stationPage<=1" @click="changeStationPage(stationPage-1)">上一頁</button><span>第 {{stationPage}} / {{stationPageCount}} 頁</span><button class="btn btn-small btn-outline" :disabled="stationPage>=stationPageCount" @click="changeStationPage(stationPage+1)">下一頁</button></div></div>
-  <div class="save-row"><span>調整設備狀態後，請按儲存套用變更。</span><button class="btn btn-primary" @click="saveStatuses">儲存設備狀態</button></div>
-  <div class="section-heading" style="margin-top:26px"><div><h3>設備狀態異動紀錄</h3><p>查詢結果：{{filteredStatusHistory.length}} 筆</p></div></div>
+  
+  <div class="section-heading equipment-history-heading" style="margin-top:26px"><div><h3>設備狀態異動紀錄</h3><p>查詢結果：{{filteredStatusHistory.length}} 筆</p></div></div>
    <div class="table-wrap"><table><thead><tr><th>異動時間</th><th>設備</th><th>原狀態</th><th>新狀態</th><th>變更原因</th><th>操作人員</th></tr></thead><tbody><tr v-for="i in pagedStatusHistory" :key="i.id"><td>{{i.time}}</td><td>{{i.station}}</td><td>{{i.from}}</td><td>{{i.to}}</td><td>{{i.reason}}</td><td>{{i.operator}}</td></tr><tr v-if="!filteredStatusHistory.length"><td colspan="6" class="empty-cell">沒有符合條件的設備異動紀錄</td></tr></tbody></table></div>
    <div class="pagination-row"><span>共 {{filteredStatusHistory.length}} 筆紀錄｜每頁 10 筆</span><div class="pagination-controls"><button class="btn btn-small btn-outline" :disabled="statusHistoryPage<=1" @click="changeStatusHistoryPage(statusHistoryPage-1)">上一頁</button><span>第 {{statusHistoryPage}} / {{statusHistoryPageCount}} 頁</span><button class="btn btn-small btn-outline" :disabled="statusHistoryPage>=statusHistoryPageCount" @click="changeStatusHistoryPage(statusHistoryPage+1)">下一頁</button></div></div>
    </div>
@@ -184,8 +197,8 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
   </div>
   <div class="point-combined-section">
    <h3>員工累計扣點</h3>
-   <div class="table-wrap"><table><thead><tr><th>員工編號</th><th>員工姓名</th><th>累計扣點</th><th>卡片處置</th><th>最近扣點原因</th><th>管理操作</th></tr></thead><tbody>
-    <tr v-for="row in pagedPointRows" :key="row.id"><td>{{row.id}}</td><td>{{row.name}}</td><td>{{row.points}} / 3 點</td><td>{{row.points>=3?'達門檻，待停用':'正常使用'}}</td><td>{{row.reason}}</td><td><button class="btn btn-small btn-outline" @click="openPointModal(row)">＋ 手動扣點</button><button v-if="row.points>=3" class="btn btn-small btn-primary" @click="emit('go-card-management',row.id)">前往卡片管理停用</button></td></tr>
+   <div class="table-wrap"><table><thead><tr><th>員工編號</th><th>員工姓名</th><th>累計扣點</th><th>卡片處置</th><th>最近扣點原因</th><th>操作</th></tr></thead><tbody>
+    <tr v-for="row in pagedPointRows" :key="row.id"><td>{{row.id}}</td><td>{{row.name}}</td><td>{{row.points}} / 3 點</td><td>{{row.points>=3?'達門檻，待停用':'正常使用'}}</td><td>{{row.reason}}</td><td><button class="btn btn-small btn-outline" @click="openPointModal(row)">＋ 手動扣點</button></td></tr>
     <tr v-if="!filteredPointRows.length"><td colspan="6" class="empty-cell">沒有符合條件的員工</td></tr>
    </tbody></table></div>
    <h3 class="point-history-heading">違規扣點紀錄</h3>
