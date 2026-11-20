@@ -16,8 +16,8 @@ function save(station) {
 </script>
 <template>
  <section class="qr-mapping-view">
-  <div class="section-heading"><div><h2>設備與 QR Code 網址對應</h2><p>每個設備只需設定原廠 QR Code 對應網址，系統依網址產生 QR Code，不需另存圖片。</p></div><button class="btn btn-outline" @click="emit('back')">← 返回系統設定</button></div>
-  <div class="concept-banner"><strong>管理方式</strong><p>請填入廠商提供的原始 QR Code 網址。若廠商更新 QR Code，只需更新該設備的網址；請勿自行修改網址內容。</p></div>
+  <!-- <div class="section-heading"><div><h2>設備與 QR Code 網址對應</h2><p>每個設備只需設定原廠 QR Code 對應網址，系統依網址產生 QR Code，不需另存圖片。</p></div><button class="btn btn-outline" @click="emit('back')">← 返回系統設定</button></div> -->
+  <!-- <div class="concept-banner"><strong>管理方式</strong><p>請填入廠商提供的原始 QR Code 網址。若廠商更新 QR Code，只需更新該設備的網址；請勿自行修改網址內容。</p></div> -->
   <div class="qr-mapping-list">
    <article v-for="station in stations" :key="station.id" class="qr-mapping-card">
     <div class="qr-mapping-card-head">

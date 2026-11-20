@@ -138,7 +138,7 @@ function exportStatusHistory(){ const rows=[['異動時間','設備','原狀態'
 <template>
 <section>
  <template v-if="page==='announcements'">
-  <div class="concept-banner"><strong>公告圖片管理</strong><p>請先將 JPG、JPEG 或 PNG 圖片存入 USB，再選取圖片匯入本機。匯入完成後可移除 USB；公告圖片由本機儲存及輪播。</p></div>
+  <!-- <div class="concept-banner"><strong>公告圖片管理</strong><p>請先將 JPG、JPEG 或 PNG 圖片存入 USB，再選取圖片匯入本機。匯入完成後可移除 USB；公告圖片由本機儲存及輪播。</p></div> -->
   <div class="filter-panel"><div class="filter-field search-field"><label>公告標題</label><input v-model="newTitle" placeholder="輸入公告標題" /></div><div class="filter-field"><label>選擇公告圖片（USB）</label><input type="file" accept="image/png,image/jpeg" @change="addAnnouncement" /></div><span class="table-summary">{{selectedFile || '尚未選擇圖片'}}</span><button class="btn btn-primary" @click="saveAnnouncement">＋ 匯入公告</button></div>
   <div class="filter-panel"><div><strong>首頁待機輪播</strong><p class="muted">員工尚未點擊畫面時自動播放啟用中的公告；點擊畫面後進入充電／管理選擇。</p></div><label class="setting-control">統一輪播時間 <select v-model="carouselSeconds"><option value="3">3 秒</option><option value="5">5 秒</option><option value="10">10 秒</option></select></label></div>
   <div class="table-wrap"><table><thead><tr><th>順序</th><th>公告標題</th><th>圖片檔案</th><th>啟用狀態</th><th>排序</th></tr></thead><tbody><tr v-for="a in announcements" :key="a.id"><td>{{a.order}}</td><td><strong>{{a.title}}</strong></td><td>{{a.file}}</td><td><label class="switch-control"><input type="checkbox" v-model="a.enabled"><span class="switch-slider"></span></label> {{a.enabled?'啟用':'停用'}}</td><td><button class="btn btn-small btn-outline" @click="move(a,-1)">↑</button> <button class="btn btn-small btn-outline" @click="move(a,1)">↓</button></td></tr></tbody></table></div>

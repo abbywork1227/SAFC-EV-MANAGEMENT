@@ -20,7 +20,7 @@ function save() { if (!preview.value) return alert('請先選擇原廠 QR Code �
 <template>
   <section>
     <div class="section-heading"><div><h2>設備與 QR Code 對應</h2><p>查看各充電位置對應的原廠 QR Code；如原廠更換，請上傳新圖片。</p></div><button class="btn btn-outline" @click="emit('back')">← 返回系統設定</button></div>
-    <div class="concept-banner"><strong>管理方式</strong><p>每個充電位置使用各自固定的原廠 QR Code。初次由客戶提供圖片並建置；日後如有更換，管理者選擇新圖片、預覽後儲存即可。請勿自行重新編輯 QR Code 內容。</p></div>
+    <!-- <div class="concept-banner"><strong>管理方式</strong><p>每個充電位置使用各自固定的原廠 QR Code。初次由客戶提供圖片並建置；日後如有更換，管理者選擇新圖片、預覽後儲存即可。請勿自行重新編輯 QR Code 內容。</p></div> -->
     <div class="qr-mapping-grid">
       <article v-for="station in stations" :key="station.id" class="qr-mapping-card">
         <div class="station-top"><strong>{{ station.id }}</strong><span class="status" :class="station.qrImage ? 'available' : 'neutral'">{{ station.qrImage ? '已設定' : '待上傳原廠圖片' }}</span></div>
